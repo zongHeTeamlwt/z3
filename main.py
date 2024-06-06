@@ -5,6 +5,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.model_selection import cross_val_score
 
 warnings.filterwarnings("ignore")  # 忽略警告信息
 
@@ -98,11 +99,21 @@ if __name__ == "__main__":
     xTrain = trainData.drop(['Survived', 'PassengerId', 'Name', 'Ticket', 'Cabin'], axis=1)
 
     print(xTrain)
-    print(yTrain)
+    # print(yTrain)
 
     # 建立模型
     # 随机森林
     randomForest = RandomForestClassifier(n_estimators=100, random_state=42)
     randomForest.fit(xTrain, yTrain)
+    scores = cross_val_score(randomForest, xTrain, yTrain, cv=5)  # cv=5表示使用5折交叉验证
+    print("交叉验证准确率:", scores.mean())  # 输出平均准确率
     yPred = randomForest.predict(xTest)
     save("./result/submission_11.csv", testData, yPred)
+
+
+    gBC = GradientBoostingClassifier(random_state=42)
+    gBC.fit(xTrain, yTrain)
+    yPred = gBC.predict(xTest)
+    scores = cross_val_score(gBC, xTrain, yTrain, cv=5)  # cv=5表示使用5折交叉验证
+    print("交叉验证准确率:", scores.mean())  # 输出平均准确率
+    save("./result/submission_111.csv", testData, yPred)

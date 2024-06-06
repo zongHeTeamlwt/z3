@@ -5,7 +5,9 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.model_selection import cross_val_score
+from sklearn.feature_selection import SelectFromModel
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
 
 warnings.filterwarnings("ignore")  # 忽略警告信息
 
@@ -45,6 +47,12 @@ def analysisDataByPicture():
     grid.add_legend()
 
 
+def fillAgeByTitleMedian():
+    # 计算每个头衔组的中位年龄
+    title_age_median = trainData.groupby('Title')['Age'].median()
+    # 对缺失值进行填充
+    trainData['Age'].fillna(trainData['Title'].map(title_age_median), inplace=True)
+    testData['Age'].fillna(testData['Title'].map(title_age_median), inplace=True)
 
 def fillByAverage(col):
     trainData[col].fillna(trainData[col].mean(), inplace=True)
@@ -84,36 +92,39 @@ if __name__ == "__main__":
     dataPreview()  # 数据查看
     # analysisDataByPicture()  # 数据分析（通过画图）
 
-    fillByAverage("Age")  # 对年龄填充平均值
+    # fillByAverage("Age")  # 对年龄填充平均值
     fillByMost("Embarked")  # 登船港口，有两个缺失值，数量较少，用出现频率最多的填充即可
     fillByUnknown("Cabin")  # 填充夹板号，有大量缺失值，通常不会尝试去预测或估计具体的船舱号，也不能删除这个数据，因为其他的字段是有用的，这里我们把它表示为unknown
     fillByAverage("Fare")  # 填充票价，平均值
 
-    #特征选择和特征工程
-    # 2.1 sex: 转换为0-1，embarked: 使用one-hot编码
     classifierByZero_One("Sex", "male", "female")
     trainData, testData = one_hot("Embarked", trainData, testData)
-    # 2.3 特征选择
-    xTest = testData.drop(['PassengerId', 'Name', 'Ticket', 'Cabin'], axis=1)
+
+    trainData["Title"] = trainData["Name"].apply(lambda name: name.split(",")[1].split(".")[0].strip())
+    testData["Title"] = testData["Name"].apply(lambda name: name.split(",")[1].split(".")[0].strip())
+    fillAgeByTitleMedian()
+    testData = pd.get_dummies(testData, columns=["Title"])
+    trainData = pd.get_dummies(trainData, columns=["Title"])
+
+
+    xTest = testData.drop(['Name', 'Ticket', 'Cabin'], axis=1)
     yTrain = trainData["Survived"]
-    xTrain = trainData.drop(['Survived', 'PassengerId', 'Name', 'Ticket', 'Cabin'], axis=1)
+    xTrain = trainData.drop(['Survived',  'Name', 'Ticket', 'Cabin'], axis=1)
 
-    print(xTrain)
-    # print(yTrain)
-
-    # 建立模型
-    # 随机森林
     randomForest = RandomForestClassifier(n_estimators=100, random_state=42)
     randomForest.fit(xTrain, yTrain)
-    scores = cross_val_score(randomForest, xTrain, yTrain, cv=5)  # cv=5表示使用5折交叉验证
-    print("交叉验证准确率:", scores.mean())  # 输出平均准确率
-    yPred = randomForest.predict(xTest)
-    save("./result/submission_11.csv", testData, yPred)
-
-
+    selector = SelectFromModel(randomForest, threshold="mean", prefit=True)
+    xTrainWithImportantFactor = selector.transform(xTrain)
+    importantFeatureName = xTrain.columns[selector.get_support()]
+    importantFeatureNameList = []
+    for idx in range(0, len(importantFeatureName)):
+        importantFeatureNameList.append(importantFeatureName[idx])
+    trainData = xTrain[importantFeatureNameList]
+    testData = xTest[importantFeatureNameList]
+    xTrain, xTest, yTrain, yTest = train_test_split(trainData, yTrain, test_size=0.1, random_state=42)
+    print(xTrain)
+    print(yTrain)
     gBC = GradientBoostingClassifier(random_state=42)
     gBC.fit(xTrain, yTrain)
-    yPred = gBC.predict(xTest)
-    scores = cross_val_score(gBC, xTrain, yTrain, cv=5)  # cv=5表示使用5折交叉验证
-    print("交叉验证准确率:", scores.mean())  # 输出平均准确率
-    save("./result/submission_111.csv", testData, yPred)
+    yPred = gBC.predict(testData)
+    save("./result/submission_11.csv", testData, yPred)
